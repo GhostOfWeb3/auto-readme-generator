@@ -82,6 +82,3 @@ Refer to the script's help message for a full list of available arguments and op
 python main.py --help
 ```
 
-## License Information
-
-This project currently does not have an explicit license file. Users and contributors should consult the repository owner for licensing terms and conditions. It is recommended to add a `LICENSE` file to clarify usage and distribution rights.
