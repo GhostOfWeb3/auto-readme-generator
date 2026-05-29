@@ -1,6 +1,9 @@
 import os 
 import pathlib
-from pickle import GET
+import shutil
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from google import genai
 
@@ -8,6 +11,17 @@ load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+app = FastAPI()
+
+# Enable CORS so your frontend can communicate with the backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 LANGUAGE_MAP = {
     ".py": "Python",
@@ -24,11 +38,11 @@ LANGUAGE_MAP = {
     ".cs": "C#",
 }
 
+# --- KEEPS YOUR EXACT ORIGINAL LOGIC COMPLETELY INTACT ---
+
 def scan_project(folder_path):
     folder = pathlib.Path(folder_path)
-    
     if not folder.exists() or not folder.is_dir():
-        print(f"Invalid folder path: {folder_path}")
         return None, None
     
     detected_languages = set()
@@ -46,8 +60,7 @@ def scan_project(folder_path):
                 
     return list(detected_languages), file_names
 
-def generate_readme(folder_path, languages, file_names):
-    folder_name = pathlib.Path(folder_path).name
+def generate_readme(folder_name, languages, file_names):
     prompt = f"""
     You are a technical writer. Generate a professional and detailed README.md for a software project with the following details:
     
@@ -56,48 +69,61 @@ def generate_readme(folder_path, languages, file_names):
     Files in Project: {", ".join(file_names) if file_names else "None Found"}
     
     The README should include the following sections:
-    - roject Title and short description
+    - Project Title and short description
     - Features
     - Tech Stack
     - Project Structure
     - Installation Instructions
     - Usage Instructions
-    License Information
+    - License Information
     
     Write it in clean Markdown format, using appropriate headings, bullet points, and code blocks where necessary. Make it informative and engaging for potential users and contributors. Be specific and realistic based on the project details provided. DON'T INCLUDE ANY EMOJIS AND EM DASHES.
     """
     response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-    
     try:
         return response.text
     except Exception as e:
         print(f"Failed to generate README: {e}")
         return None
 
-def save_readme(folder_path, content):
-    output_path = pathlib.Path(folder_path) / "README.md"
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    print(f"README.md saved to {output_path}")
-    
-def main():
-    folder_path = input("Enter the path to your project folder: ").strip()
-    
-    print("Scanning project...")
-    languages, file_names = scan_project(folder_path)
+# --- NEW WEB ENDPOINT LOGIC ---
+
+@app.post("/generate")
+async def web_generate(files: list[UploadFile] = File(...)):
+    """Receives files dropped from the web dashboard, scans them, and returns the markdown."""
+    TEMP_DIR = pathlib.Path("./temp_project")
+    if TEMP_DIR.exists():
+        shutil.rmtree(TEMP_DIR)
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Reconstruct the project folder structure locally from the upload
+    project_name = "Uploaded_Project"
+    for file in files:
+        if file.filename:
+            # Extract folder name if provided by browser context path
+            parts = pathlib.Path(file.filename).parts
+            if len(parts) > 1:
+                project_name = parts[0]
+                
+            file_path = TEMP_DIR / file.filename
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+
+    # Use your original logic functions on our temporary layout
+    languages, file_names = scan_project(TEMP_DIR)
     
     if languages is None:
-        return
+        return {"error": "Failed to process project folder structures."}
+
+    readme_markdown = generate_readme(project_name, languages, file_names)
     
-    print(f"Detected: {', '.join(languages) if languages else 'No Known languages found'}")
-    print("Generating README...")
-    
-    readme_content = generate_readme(folder_path, languages, file_names)
-    
-    if readme_content:
-        save_readme(folder_path, readme_content)
-    else:
-        print("README generation failed.")
-        
+    # Cleanup temporary folder
+    shutil.rmtree(TEMP_DIR)
+
+    return {"markdown": readme_markdown}
+
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)

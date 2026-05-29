@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI README Generator</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        .drop-zone {
+            border: 2px dashed #38bdf8;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            background: #1e293b;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .drop-zone:hover { background: #334155; }
+        button {
+            background: #38bdf8;
+            color: #0f172a;
+            border: none;
+            padding: 12px 24px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        textarea {
+            width: 100%;
+            height: 300px;
+            margin-top: 20px;
+            background: #020617;
+            color: #10b981;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: monospace;
+        }
+        .hidden { display: none; }
+        .loading { color: #e2e8f0; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <h1>AI README Generator</h1>
+    <p>Drag and drop your project folder below to instantly generate a professional markdown documentation layout.</p>
+
+    <div class="drop-zone" id="dropZone">
+        <p>Drag & Drop your project folder here</p>
+        <p style="font-size: 0.85rem; color: #94a3b8;">Or click to select folder manually</p>
+        <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
+    </div>
+
+    <div id="status" class="loading" style="margin-top: 15px;"></div>
+
+    <h3 class="hidden" id="resultHeader">Generated README.md:</h3>
+    <textarea id="outputBox" class="hidden" readonly></textarea>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const folderInput = document.getElementById('folderInput');
+        const status = document.getElementById('status');
+        const outputBox = document.getElementById('outputBox');
+        const resultHeader = document.getElementById('resultHeader');
+
+        dropZone.addEventListener('click', () => folderInput.click());
+
+        folderInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+        // Drag & Drop handlers
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#10b981'; });
+        dropZone.addEventListener('dragleave', () => dropZone.style.borderColor = '#38bdf8');
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#38bdf8';
+            handleFiles(e.dataTransfer.files);
+        });
+
+        async function handleFiles(files) {
+            if (files.length === 0) return;
+
+            status.textContent = "Uploading and scanning project files...";
+            const formData = new FormData();
+
+            // Append all nested files to payload
+            for (let i = 0; i < files.length; i++) {
+                // webkitRelativePath preserves folder trees natively
+                formData.append("files", files[i], files[i].webkitRelativePath || files[i].name);
+            }
+
+            try {
+                status.textContent = "AI is writing your README text...";
+                const response = await fetch('http://127.0.0.1:8000/generate', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.markdown) {
+                    status.textContent = "Success!";
+                    resultHeader.classList.remove('hidden');
+                    outputBox.classList.remove('hidden');
+                    outputBox.value = data.markdown;
+                } else {
+                    status.textContent = "Error: " + (data.error || "Generation crashed.");
+                }
+            } catch (err) {
+                status.textContent = "Could not connect to the backend server.";
+                console.error(err);
+            }
+        }
+    </script>
+</body>
+</html>
