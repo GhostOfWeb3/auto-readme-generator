@@ -8,8 +8,6 @@ from dotenv import load_dotenv
 from google import genai
 from fastapi.staticfiles import StaticFiles
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
-
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -126,6 +124,9 @@ async def web_generate(files: list[UploadFile] = File(...)):
     shutil.rmtree(TEMP_DIR)
 
     return {"markdown": readme_markdown}
+
+
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
