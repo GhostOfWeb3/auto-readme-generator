@@ -87,7 +87,19 @@
         async function handleFiles(files) {
             if (files.length === 0) return;
 
+            // --- Client-side validation ---
+            const MAX_FILES = 500;
+            if (files.length > MAX_FILES) {
+                status.textContent = `Error: Folder too large. Please limit to ${MAX_FILES} files. (You attempted to upload ${files.length}).`;
+                status.style.color = '#ef4444'; // High-contrast red for errors
+                return; // Stop execution entirely
+            }
+            
+            // Reset status styling for valid uploads
+            status.style.color = '#e2e8f0'; 
             status.textContent = "Uploading and scanning project files...";
+            // ------------------------------
+
             const formData = new FormData();
 
             // Append all nested files to payload
@@ -107,14 +119,17 @@
                 
                 if (data.markdown) {
                     status.textContent = "Success!";
+                    status.style.color = '#10b981'; // Green for success
                     resultHeader.classList.remove('hidden');
                     outputBox.classList.remove('hidden');
                     outputBox.value = data.markdown;
                 } else {
                     status.textContent = "Error: " + (data.error || "Generation crashed.");
+                    status.style.color = '#ef4444'; // Red for backend errors
                 }
             } catch (err) {
                 status.textContent = "Could not connect to the backend server.";
+                status.style.color = '#ef4444';
                 console.error(err);
             }
         }
