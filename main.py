@@ -39,8 +39,6 @@ LANGUAGE_MAP = {
     ".cs": "C#",
 }
 
-# --- KEEPS YOUR EXACT ORIGINAL LOGIC COMPLETELY INTACT ---
-
 def scan_project(folder_path):
     folder = pathlib.Path(folder_path)
     if not folder.exists() or not folder.is_dir():
@@ -48,13 +46,40 @@ def scan_project(folder_path):
     
     detected_languages = set()
     file_names = []
-    ignored = {".git", "node_modules", "venv", "__pycache__", ".env"}
+    
+    # 1. Directories that contain dependencies, compiled output, or IDE configs
+    ignored_dirs = {
+        ".git", "node_modules", "venv", "env", "__pycache__", 
+        "target", "build", "dist", "bin", "obj",
+        ".vscode", ".idea", ".env"
+    }
+    
+    # 2. File extensions for compiled binaries, media, and logs
+    ignored_extensions = {
+        ".pyc", ".pyo", ".exe", ".dll", ".so", ".o", ".a", ".lib", ".class", 
+        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".pdf", 
+        ".log", ".lock"
+    }
+    
+    # 3. Specific files that clutter the directory (OS files, strict lockfiles)
+    ignored_files = {
+        ".DS_Store", "Thumbs.db", 
+        "package-lock.json", "yarn.lock", "Cargo.lock"
+    }
     
     for item in folder.rglob("*"):
-        if any(part in ignored for part in item.parts):
+        # Skip if any part of the path is in the ignored directories list
+        if any(part in ignored_dirs for part in item.parts):
             continue
+            
         if item.is_file():
+            # Skip specific unwanted files or extensions
+            if item.name in ignored_files or item.suffix.lower() in ignored_extensions:
+                continue
+                
             file_names.append(item.name)
+            
+            # Map detected languages
             suffix = item.suffix.lower()
             if suffix in LANGUAGE_MAP:
                 detected_languages.add(LANGUAGE_MAP[suffix])
@@ -62,12 +87,22 @@ def scan_project(folder_path):
     return list(detected_languages), file_names
 
 def generate_readme(folder_name, languages, file_names):
+    MAX_PROMPT_FILES = 150
+    
+    # Slice the array to only include the first 150 files
+    truncated_files = file_names[:MAX_PROMPT_FILES]
+    files_string = ", ".join(truncated_files) if truncated_files else "None Found"
+    
+    # Append a note if files were truncated
+    if len(file_names) > MAX_PROMPT_FILES:
+        files_string += f" ...and {len(file_names) - MAX_PROMPT_FILES} more."
+
     prompt = f"""
     You are a technical writer. Generate a professional and detailed README.md for a software project with the following details:
     
     Project Name: {folder_name}
     Detected Languages/Stack: {", ".join(languages) if languages else "Unknown"}
-    Files in Project: {", ".join(file_names) if file_names else "None Found"}
+    Files in Project: {files_string}
     
     The README should include the following sections:
     - Project Title and short description
@@ -87,11 +122,15 @@ def generate_readme(folder_name, languages, file_names):
         print(f"Failed to generate README: {e}")
         return None
 
-# --- NEW WEB ENDPOINT LOGIC ---
-
 @app.post("/generate")
 async def web_generate(files: list[UploadFile] = File(...)):
     """Receives files dropped from the web dashboard, scans them, and returns the markdown."""
+    MAX_UPLOAD_FILES = 500
+    
+    # 1. Hard Server Cap check
+    if len(files) > MAX_UPLOAD_FILES:
+        return {"error": f"Project too large. Please limit the upload to {MAX_UPLOAD_FILES} files."}
+
     TEMP_DIR = pathlib.Path("./temp_project")
     if TEMP_DIR.exists():
         shutil.rmtree(TEMP_DIR)
